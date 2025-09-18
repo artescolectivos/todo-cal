@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__tessl__build",
+      "Bash(npm run test:*)",
+      "Bash(npm run dev:*)",
+      "mcp__tessl__edit",
+      "Bash(npm install:*)",
+      "mcp__tessl__install",
+      "mcp__tessl__create",
+      "Bash(node:*)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "tessl"
+  ]
+}

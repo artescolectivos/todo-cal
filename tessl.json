@@ -1,0 +1,23 @@
+{
+  "name": "todo-cal",
+  "dependencies": {
+    "tessl/npm-bcrypt": {
+      "version": "6.0.0"
+    },
+    "tessl/npm-express": {
+      "version": "5.1.0"
+    },
+    "tessl/npm-jsonwebtoken": {
+      "version": "9.0.0"
+    },
+    "tessl/npm-jwt-decode": {
+      "version": "4.0.0"
+    },
+    "tessl/npm-pg": {
+      "version": "8.16.0"
+    },
+    "tessl/npm-react": {
+      "version": "19.1.0"
+    }
+  }
+}
