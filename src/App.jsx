@@ -7,6 +7,7 @@ import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, addM
 import { v4 as uuidv4 } from 'uuid';
 import { fetchTodos, createTodo, updateTodo, deleteTodo } from './api.js';
 import { useAuth } from './AuthContext.jsx';
+import useSSEConnection from './useSSEConnection.js';
 import Auth from './Auth.jsx';
 import './App.css';
 
@@ -292,6 +293,64 @@ function App() {
   const [selectedDate, setSelectedDate] = useState(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
+  // Transform todo from backend format to frontend format (same as api.js)
+  const transformTodoFromBackend = (backendTodo) => {
+    return {
+      id: backendTodo.id,
+      text: backendTodo.text,
+      completed: backendTodo.completed,
+      dueDate: backendTodo.due_date ? new Date(backendTodo.due_date) : null,
+      createdAt: new Date(backendTodo.created_at),
+      updatedAt: new Date(backendTodo.updated_at)
+    };
+  };
+
+  // SSE event handler for real-time todo updates
+  const handleSSEEvent = (eventData) => {
+    // Only log important events, not heartbeats
+    if (eventData.type !== 'heartbeat') {
+      console.log('Received SSE event:', eventData);
+    }
+
+    switch (eventData.type) {
+      case 'todo-created':
+        // Add new todo to state if not already present
+        setTodos(prevTodos => {
+          const exists = prevTodos.some(todo => todo.id === eventData.data.id);
+          if (!exists) {
+            const newTodo = transformTodoFromBackend(eventData.data);
+            return [...prevTodos, newTodo];
+          }
+          return prevTodos;
+        });
+        break;
+
+      case 'todo-updated':
+        // Update existing todo in state
+        setTodos(prevTodos =>
+          prevTodos.map(todo =>
+            todo.id === eventData.data.id
+              ? transformTodoFromBackend(eventData.data)
+              : todo
+          )
+        );
+        break;
+
+      case 'todo-deleted':
+        // Remove todo from state
+        setTodos(prevTodos =>
+          prevTodos.filter(todo => todo.id !== eventData.data.id)
+        );
+        break;
+
+      default:
+        console.log('Unhandled SSE event type:', eventData.type);
+    }
+  };
+
+  // Initialize SSE connection
+  const { status: sseStatus, error: sseError } = useSSEConnection(handleSSEEvent);
+
   // Load todos from API when user is authenticated
   useEffect(() => {
     async function initializeTodos() {
@@ -393,6 +452,19 @@ function App() {
           <div className="header-content">
             <h1>Todo Calendar</h1>
             <div className="user-info">
+              <div className="connection-status">
+                <span className={`sse-status ${sseStatus}`}>
+                  {sseStatus === 'connected' && '🟢 Live'}
+                  {sseStatus === 'connecting' && '🟡 Connecting...'}
+                  {sseStatus === 'disconnected' && '🔴 Offline'}
+                  {sseStatus === 'error' && '🔴 Error'}
+                </span>
+                {sseError && (
+                  <span className="sse-error" title={sseError}>
+                    ⚠️
+                  </span>
+                )}
+              </div>
               <span className="welcome-text">
                 Welcome, {user?.first_name || user?.email}!
               </span>

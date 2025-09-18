@@ -1,6 +1,6 @@
 # Todo API Backend
 
-RESTful API backend server for the todo calendar application.
+RESTful API backend server for the todo calendar application with real-time Server-Sent Events support.
 
 ## Target
 
@@ -14,6 +14,7 @@ RESTful API backend server for the todo calendar application.
 - Creates an Express application instance.  
 - Enables CORS for all origins.  
 - Parses JSON request bodies with built-in middleware.  
+- Initializes SSE server functionality and sets up SSE routes.
 - Starts an HTTP server listening on `process.env.PORT` or port `3001`.  
 
 ### Health Check Endpoint
@@ -29,9 +30,19 @@ RESTful API backend server for the todo calendar application.
   - `completed` (boolean, defaults to `false`)
   - `due_date` (timestamp)
   - `created_at` and `updated_at` set to current time  
-  Responds with HTTP status `201` and the created todo.  
-- PUT `/api/todos/:id` updates an existing todo's `text`, `completed`, and `due_date`, sets `updated_at` to current time. Responds with the updated todo or HTTP `404` if not found.  
-- DELETE `/api/todos/:id` deletes the todo by `id`. Responds with HTTP status `204` or HTTP `404` if not found.  
+  Responds with HTTP status `201` and the created todo.
+  Broadcasts `todo-created` event to authenticated user via SSE.
+- PUT `/api/todos/:id` updates an existing todo's `text`, `completed`, and `due_date`, sets `updated_at` to current time. Responds with the updated todo or HTTP `404` if not found.
+  Broadcasts `todo-updated` event to authenticated user via SSE.
+- DELETE `/api/todos/:id` deletes the todo by `id`. Responds with HTTP status `204` or HTTP `404` if not found.
+  Broadcasts `todo-deleted` event to authenticated user via SSE.
+
+### Real-time Event Broadcasting
+
+- Integrates with SSE server to provide real-time todo updates.
+- Broadcasts events only to authenticated users who own the todos.
+- Maintains SSE connections and handles connection lifecycle.
+- Provides heartbeat functionality to keep connections alive.
 
 ### Database Integration
 
@@ -46,7 +57,7 @@ RESTful API backend server for the todo calendar application.
     - `updated_at TIMESTAMP NOT NULL DEFAULT NOW()`
   - Creates an index on `due_date` for efficient calendar queries.  
 - Handles database errors with logging and returns HTTP `500` on failures.  
-- Gracefully shuts down the HTTP server and connection pool on process termination.  
+- Gracefully shuts down the HTTP server, SSE connections, and connection pool on process termination.
 
 ## API
 
@@ -75,3 +86,4 @@ function startServer(app: express.Application, port?: number): import('http').Se
 - CORS middleware. [@use](cors)  
 - Environment variable loader. [@use](dotenv)  
 - UUID generation. [@use](uuid)
+- SSE server functionality. [@use](./todo-sse-server.spec.md)

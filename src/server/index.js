@@ -1,6 +1,6 @@
 // GENERATED FROM SPEC - DO NOT EDIT
 // @generated with Tessl v0.21.2 from ../../specs/todo-api-backend.spec.md
-// (spec:43636eaf) (code:f3591b19)
+// (spec:43d164db) (code:ea6e9afd)
 
 import express from 'express';
 import { Pool } from 'pg';
@@ -20,6 +20,14 @@ import {
   addUserIdToTodos,
   createIndexes
 } from '../auth-system.js';
+import {
+  setupSSERoutes,
+  initializeSSE,
+  cleanupSSE,
+  broadcastTodoCreated,
+  broadcastTodoUpdated,
+  broadcastTodoDeleted
+} from './sse-server.js';
 
 // Load environment variables
 dotenv.config();
@@ -38,7 +46,7 @@ function createApp() {
 
   // Enable CORS for all origins (with credentials for cookies)
   app.use(cors({
-    origin: 'http://localhost:5174',
+    origin: ['http://localhost:5174', 'http://localhost:5175'],
     credentials: true
   }));
 
@@ -47,6 +55,10 @@ function createApp() {
 
   // Parse cookies
   app.use(cookieParser());
+
+  // Initialize SSE server functionality and set up SSE routes
+  initializeSSE();
+  setupSSERoutes(app);
 
   // Health check endpoint
   app.get('/api/health', (req, res) => {
@@ -97,7 +109,12 @@ function createApp() {
         [id, text, completed, due_date, userId, now, now]
       );
 
-      res.status(201).json(result.rows[0]);
+      const createdTodo = result.rows[0];
+
+      // Broadcast todo-created event to authenticated user via SSE
+      broadcastTodoCreated(userId, createdTodo);
+
+      res.status(201).json(createdTodo);
     } catch (error) {
       console.error('Error creating todo:', error);
       res.status(500).json({ error: 'Internal server error' });
@@ -121,7 +138,12 @@ function createApp() {
         return res.status(404).json({ error: 'Todo not found' });
       }
 
-      res.json(result.rows[0]);
+      const updatedTodo = result.rows[0];
+
+      // Broadcast todo-updated event to authenticated user via SSE
+      broadcastTodoUpdated(userId, updatedTodo);
+
+      res.json(updatedTodo);
     } catch (error) {
       console.error('Error updating todo:', error);
       res.status(500).json({ error: 'Internal server error' });
@@ -139,6 +161,9 @@ function createApp() {
       if (result.rowCount === 0) {
         return res.status(404).json({ error: 'Todo not found' });
       }
+
+      // Broadcast todo-deleted event to authenticated user via SSE
+      broadcastTodoDeleted(userId, id);
 
       res.status(204).send();
     } catch (error) {
@@ -158,9 +183,33 @@ function createApp() {
  */
 function startServer(app, port) {
   const serverPort = port || process.env.PORT || 3001;
-  return app.listen(serverPort, () => {
+  const server = app.listen(serverPort, () => {
     console.log(`Server running on port ${serverPort}`);
   });
+
+  // Gracefully shut down the HTTP server, SSE connections, and connection pool on process termination
+  const gracefulShutdown = async () => {
+    console.log('Shutting down gracefully...');
+    
+    // Close HTTP server
+    server.close(() => {
+      console.log('HTTP server closed');
+    });
+
+    // Cleanup SSE connections
+    cleanupSSE();
+
+    // Close database connection pool
+    await pool.end();
+    console.log('Database connection pool closed');
+    
+    process.exit(0);
+  };
+
+  process.on('SIGTERM', gracefulShutdown);
+  process.on('SIGINT', gracefulShutdown);
+
+  return server;
 }
 
 // Initialize database with authentication
@@ -196,19 +245,6 @@ async function initializeDatabase() {
     process.exit(1);
   }
 }
-
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('Received SIGTERM, shutting down gracefully');
-  await pool.end();
-  process.exit(0);
-});
-
-process.on('SIGINT', async () => {
-  console.log('Received SIGINT, shutting down gracefully');
-  await pool.end();
-  process.exit(0);
-});
 
 // Start server if this file is run directly
 if (import.meta.url === `file://${process.argv[1]}`) {
