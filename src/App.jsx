@@ -305,6 +305,19 @@ function App() {
     };
   };
 
+  // Deduplicate todos based on text, dueDate, and completed status
+  const deduplicateTodos = (todos) => {
+    const seen = new Map();
+    return todos.filter(todo => {
+      const key = `${todo.text}-${todo.dueDate?.toISOString() || 'no-date'}-${todo.completed}`;
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.set(key, true);
+      return true;
+    });
+  };
+
   // SSE event handler for real-time todo updates
   const handleSSEEvent = (eventData) => {
     // Only log important events, not heartbeats
@@ -314,12 +327,18 @@ function App() {
 
     switch (eventData.type) {
       case 'todo-created':
-        // Add new todo to state if not already present
+        // Add new todo to state if not already present (check by ID and content)
         setTodos(prevTodos => {
-          const exists = prevTodos.some(todo => todo.id === eventData.data.id);
-          if (!exists) {
-            const newTodo = transformTodoFromBackend(eventData.data);
-            return [...prevTodos, newTodo];
+          const newTodo = transformTodoFromBackend(eventData.data);
+          const existsById = prevTodos.some(todo => todo.id === newTodo.id);
+          const existsByContent = prevTodos.some(todo =>
+            todo.text === newTodo.text &&
+            todo.dueDate?.getTime() === newTodo.dueDate?.getTime() &&
+            todo.completed === newTodo.completed
+          );
+
+          if (!existsById && !existsByContent) {
+            return deduplicateTodos([...prevTodos, newTodo]);
           }
           return prevTodos;
         });
@@ -327,13 +346,14 @@ function App() {
 
       case 'todo-updated':
         // Update existing todo in state
-        setTodos(prevTodos =>
-          prevTodos.map(todo =>
+        setTodos(prevTodos => {
+          const updatedTodos = prevTodos.map(todo =>
             todo.id === eventData.data.id
               ? transformTodoFromBackend(eventData.data)
               : todo
-          )
-        );
+          );
+          return deduplicateTodos(updatedTodos);
+        });
         break;
 
       case 'todo-deleted':
@@ -357,7 +377,8 @@ function App() {
       if (isAuthenticated) {
         try {
           const apiTodos = await loadTodos();
-          setTodos(apiTodos);
+          const deduplicatedTodos = deduplicateTodos(apiTodos);
+          setTodos(deduplicatedTodos);
         } catch (error) {
           console.error('Failed to load todos:', error);
           // If unauthorized, might need to clear user state
@@ -373,7 +394,7 @@ function App() {
   const handleAddTodo = async (newTodo) => {
     try {
       const createdTodo = await createTodo(newTodo);
-      setTodos(prevTodos => [...prevTodos, createdTodo]);
+      // Don't add to local state here - let SSE handle it to avoid duplicates
     } catch (error) {
       console.error('Failed to add todo:', error);
     }
@@ -389,11 +410,7 @@ function App() {
         completed: !todoToUpdate.completed
       });
 
-      setTodos(prevTodos =>
-        prevTodos.map(todo =>
-          todo.id === id ? updatedTodo : todo
-        )
-      );
+      // Don't update local state here - let SSE handle it to avoid duplicates
     } catch (error) {
       console.error('Failed to toggle todo:', error);
     }
@@ -402,7 +419,7 @@ function App() {
   const handleDeleteTodo = async (id) => {
     try {
       await deleteTodo(id);
-      setTodos(prevTodos => prevTodos.filter(todo => todo.id !== id));
+      // Don't update local state here - let SSE handle it to avoid duplicates
     } catch (error) {
       console.error('Failed to delete todo:', error);
     }
