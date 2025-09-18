@@ -8,7 +8,10 @@
       "Bash(npm install:*)",
       "mcp__tessl__install",
       "mcp__tessl__create",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_type",
+      "mcp__playwright__browser_navigate"
     ]
   },
   "enableAllProjectMcpServers": true,
